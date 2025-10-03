@@ -1,17 +1,18 @@
-use log::trace;
+use log::{debug, info, trace};
+use std::fs;
 use std::fs::{read_to_string, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-/// Searches upward from the current directory until a .gitignore is found.
-/// Returns the PathBuf to the .gitignore file or an error if none is found.
-fn find_gitignore(start: &Path) -> Result<PathBuf, String> {
-    let mut current = start.to_path_buf();
+pub fn find_repo() -> Result<PathBuf, String> {
+    let mut current = Path::new(".").to_path_buf();
 
     loop {
-        let candidate = current.join(".gitignore");
-        if candidate.exists() {
-            return Ok(candidate);
+        let parent = current.clone();
+        let candidate = current.join(".git");
+        trace!("repo path candidate: {:?}", candidate);
+        if candidate.exists() && candidate.is_dir() {
+            return Ok(parent);
         }
 
         // If we are at the root, stop
@@ -21,30 +22,68 @@ fn find_gitignore(start: &Path) -> Result<PathBuf, String> {
         }
     }
 
-    Err("No .gitignore found in current or parent directories".to_string())
+    Err("No git repository found in current or parent directories".to_string())
 }
 
-pub fn read_gitignore() -> Result<String, String> {
-    let gitignore_path = find_gitignore(Path::new("."))?;
-    trace!(".gitignore found: {}", gitignore_path.display());
-    if gitignore_path.exists() {
-        return Ok(read_to_string(gitignore_path).map_err(|_| "Failed to read .gitignore")?);
+pub fn gitignore(files: Vec<PathBuf>) -> Result<(), String> {
+    info!("Excluding secret files using \".gitignore\".");
+
+    if let Ok(repository) = find_repo() {
+        let gitignore = repository.join(".gitignore");
+
+        let content = if gitignore.exists() {
+            fs::read_to_string(&gitignore)
+                .map_err(|err| format!("Could not read .gitignore {:?}. {:?}", gitignore, err))?
+        } else {
+            "".to_string()
+        };
+
+        trace!("gitignore content: {}", content);
+
+        let repository = repository.canonicalize().map_err(|err| {
+            format!(
+                "Could not canonicalize repository path {:?}. {:?}",
+                repository, err
+            )
+        })?;
+
+        let mut entries: Vec<String> = files
+            .iter()
+            .map(|file| {
+                let canonical = file.canonicalize().map_err(|err| {
+                    format!("Could not canonicalize file path {:?}: {}", file, err)
+                })?;
+
+                let relative = canonical.strip_prefix(repository.clone()).map_err(|err| {
+                    format!(
+                        "Could not strip prefix {:?} from {:?}: {}",
+                        repository, canonical, err
+                    )
+                })?;
+
+                relative
+                    .to_str()
+                    .map(|s| s.to_string())
+                    .ok_or_else(|| format!("Path {:?} is not valid UTF-8", relative))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // Optional: immer ".idea" hinzufügen
+        entries.push(".idea".to_string());
+
+        let entries: Vec<&str> = entries.iter().map(|s| s.as_str()).collect();
+
+        debug!("Finished reading .gitignore file");
+        let content = add_files_to_gitignore(
+            &content,
+            &entries,
+        );
+        fs::write(gitignore, content).map_err(|e| format!("{:?}", e))?;
+
+        debug!("Finished writing .gitignore file");
+    } else {
+        info!("Could not find a git repository. Skipping creation of .gitignore.");
     }
-    Err("Could not find .gitignore".to_string())
-}
-
-pub fn write_gitignore(content: &str) -> Result<(), String> {
-    let gitignore_path = find_gitignore(Path::new("."))?;
-    trace!(".gitignore found: {}", gitignore_path.display());
-    let mut file = OpenOptions::new()
-        .create(true)
-        .write(true)
-        .truncate(true)
-        .open(gitignore_path)
-        .expect("Failed to open or create .gitignore");
-
-    file.write_all(content.as_bytes())
-        .map_err(|_| "Failed to write .gitignore")?;
 
     Ok(())
 }

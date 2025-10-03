@@ -4,8 +4,10 @@ mod gitignore;
 
 use crate::crypto::{Key, KeySource};
 use crate::filepacker::EnvironmentPack;
+use crate::gitignore::{find_repo, gitignore};
 use clap::{Parser, Subcommand};
-use log::{debug, error, info, warn};
+use log::{debug, error, info, trace, warn};
+use std::fmt::format;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -59,7 +61,11 @@ enum Commands {
 fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     match &cli.command {
         Commands::Init { folder } => {
-            let key = Key::generate();
+            let key = match Key::load_key(&cli.key, cli.keyfile.as_path()) {
+                Ok((key, key_source)) => key,
+                Err(_) => Key::generate(),
+            };
+
             info!("Please run this to provide the key as environment variable:\n");
             info!("  $ export CI_SECRET=\"{}\"", key.to_printable());
             info!("");
@@ -67,32 +73,26 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             key.save_key(&cli.keyfile)?;
             info!("Key written to {:?}", cli.keyfile);
 
-            info!("Excluding secret files using \".gitignore\".");
-            let content = gitignore::read_gitignore()?;
-            debug!("Finished reading .gitignore file");
-            let content = gitignore::add_files_to_gitignore(
-                &content,
-                &vec![
-                    ".idea",
-                    &cli.keyfile.display().to_string(),
-                    &cli.env_conf.display().to_string(),
-                ],
-            );
-
-            gitignore::write_gitignore(&content)?;
-            debug!("Finished writing .gitignore file");
+            // add the secret files to the gitignore file
+            gitignore(vec![cli.keyfile.clone(), cli.env_conf.clone()])?;
 
             if *folder {
                 if cli.env_conf.exists() && cli.env_conf.is_file() {
                     Err("Environment already exists but it is not a folder!")?;
+                } else if !cli.env_conf.exists() {
+                    fs::create_dir_all(&cli.env_conf)?;
+                    info!("Created folder {:?}", cli.env_conf);
+                } else {
+                    info!("Environment already exists.");
                 }
-                fs::create_dir_all(&cli.env_conf)?;
-                info!("Created folder {:?}", cli.env_conf);
             } else {
                 if cli.env_conf.exists() && cli.env_conf.is_dir() {
                     Err("Environment already exists but it is not a file!")?;
+                } else if !cli.env_conf.exists() {
+                    fs::write(&cli.env_conf, "")?;
+                } else {
+                    info!("Environment already exists.");
                 }
-                fs::write(&cli.env_conf, "")?;
             }
 
             let pack = EnvironmentPack::from_path(&cli.env_conf)?;
