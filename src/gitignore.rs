@@ -3,7 +3,10 @@ use std::path::{Path, PathBuf};
 use std::{env, fs};
 
 pub fn find_repo() -> Result<PathBuf, String> {
-    let mut current = Path::new(".").to_path_buf();
+    let mut current = Path::new(".")
+        .canonicalize()
+        .map_err(|e| format!("{:?}", e))?
+        .to_path_buf();
 
     loop {
         let parent = current.clone();
