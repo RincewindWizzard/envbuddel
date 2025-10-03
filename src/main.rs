@@ -3,8 +3,9 @@ mod filepacker;
 mod gitignore;
 
 use crate::crypto::{Key, KeySource};
-use crate::filepacker::{tar_directory, EnvironmentPack};
+use crate::filepacker::EnvironmentPack;
 use clap::{Parser, Subcommand};
+use log::{error, info, warn};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -12,12 +13,25 @@ use std::path::{Path, PathBuf};
 #[command(name = "envcaja")]
 #[command(about = "File-based secret manager for CI/CD pipelines", long_about = None)]
 struct Cli {
+    /// Increase verbosity (-v, -vv, -vvv)
+    #[arg(short, long, action = clap::ArgAction::Count)]
+    verbose: u8,
+
     /// Path to the keyfile
     #[arg(long, default_value = "safe.key")]
     keyfile: PathBuf,
 
+    /// Content of the key
     #[arg(long, env = "CI_SECRET")]
     key: Option<String>,
+
+    /// path to .env file or folder
+    #[arg(long, default_value = ".env")]
+    env_conf: PathBuf,
+
+    /// path to the vault file
+    #[arg(long, default_value = "env.enc")]
+    vault: PathBuf,
 
     #[command(subcommand)]
     command: Commands,
@@ -25,88 +39,128 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Shows info
+    /// Shows debug info (key, vault, environment path) to the supplied options
     Info {},
 
-    /// Initializes repository. Creates a new key and adds entries to .gitignore
-    Init {},
-
-    /// Encrypt the environment and stores everything in one file
-    Encrypt {
-        /// path to .env file
-        #[arg(long, default_value = ".env")]
-        dotenv: PathBuf,
-
-        /// path to env.enc file
-        #[arg(long, default_value = "env.enc")]
-        vault: PathBuf,
+    /// Initializes repository. Creates a new key, environment and vault and adds entries to .gitignore
+    Init {
+        /// Creates folder instead of a single file for the environment
+        #[arg(long)]
+        folder: bool,
     },
 
-    /// Decrypts the environment
-    Decrypt {
-        /// path to .env file
-        #[arg(long, default_value = ".env")]
-        dotenv: PathBuf,
+    /// Encrypt the environment and stores everything in the vault
+    Encrypt {},
 
-        /// path to env.enc file
-        #[arg(long, default_value = "env.enc")]
-        vault: PathBuf,
-    },
+    /// Decrypts the environment from the vault and unpacks them to --env-conf path
+    Decrypt {},
 }
 
 fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     match &cli.command {
-        Commands::Init {} => {
+        Commands::Init { folder } => {
             let key = Key::generate();
-            println!("Please run this to provide the key as environment variable:\n");
-            println!("  $ export CI_SECRET=\"{}\"", key.to_base64());
-            println!();
+            info!("Please run this to provide the key as environment variable:\n");
+            info!("  $ export CI_SECRET=\"{}\"", key.to_base64());
+            info!("");
 
             if let Err(err) = fs::write(&cli.keyfile, key.to_base64()) {
-                eprintln!("{}", err); // print error to stderr
+                warn!("{}", err); // print error to stderr
                 std::process::exit(1); // exit with failure
             }
-            println!("Key written to {:?}", cli.keyfile);
+            info!("Key written to {:?}", cli.keyfile);
 
-            println!("Excluding secret files using \".gitignore\".");
+            info!("Excluding secret files using \".gitignore\".");
             gitignore::gitignore();
-            Ok(())
-        }
-        Commands::Info {} => {
-            match Key::load_key(&cli.key, &cli.keyfile) {
-                Ok((key, key_source)) => {
-                    log_key_source(key_source);
-                    println!("Successfully loaded the key:");
-                    println!("CI_SECRET=\"{}\"", key.to_base64());
-                }
-                Err(err) => eprintln!("{}", err),
+
+            if *folder {
+                fs::create_dir_all(&cli.env_conf)?;
+                info!("Created folder {:?}", cli.env_conf);
+            } else {
+                fs::write(&cli.env_conf, "")?;
             }
-            Ok(())
-        }
-        Commands::Encrypt { dotenv, vault } => {
-            let (key, key_source) = Key::load_key(&cli.key, cli.keyfile.as_path())?;
-            log_key_source(key_source);
 
-            let dotenv = Path::new(dotenv);
-            let vault = Path::new(vault);
-
-            let pack = EnvironmentPack::from_path(dotenv)?;
+            let pack = EnvironmentPack::from_path(&cli.env_conf)?;
             let ciphertext = key.encrypt_base64(&pack)?;
 
             // Write the ciphertext to output file
-            fs::write(vault, ciphertext)?;
+            fs::write(&cli.vault, ciphertext)?;
 
-            println!("Encrypted content successfully written to {:?}", vault);
+            info!("Encrypted content successfully written to {:?}", cli.vault);
+
             Ok(())
         }
-        Commands::Decrypt { dotenv, vault } => {
+        Commands::Info {} => {
+            if let Some(key) = cli.key.clone() {
+                match Key::load_key(&Some(key), Path::new("/dev/null")) {
+                    Ok((key, _)) => {
+                        info!("CI_SECRET=\"{}\"", key.to_base64());
+                    }
+                    Err(_) => {
+                        warn!("Failed to load private key from CI_SECRET=\"{}\". It needs to be 32 bytes encoded as base64!", cli.key.clone().unwrap_or("".to_string()));
+                    }
+                }
+            }
+
+            match Key::load_key(&None, &cli.keyfile) {
+                Ok((key, key_source)) => {
+                    info!(
+                        "Key contained in {:?}: \"{}\"",
+                        &cli.keyfile,
+                        key.to_base64()
+                    );
+                }
+                Err(err) => error!("{}", err),
+            }
+
+            let (key, _) = Key::load_key(&cli.key, &cli.keyfile)?;
+            if cli.vault.exists() && cli.vault.is_file() {
+                info!("Vault files exist.");
+                let ciphertext = fs::read_to_string(cli.vault)?;
+                let pack = key.decrypt_base64(&ciphertext)?;
+                info!("Successfully decrypted vault file.");
+            } else {
+                warn!("No vault file detected!");
+            }
+
+            if cli.env_conf.exists() {
+                if cli.env_conf.is_file() {
+                    info!("Environment configuration file found.");
+                } else if cli.env_conf.is_dir() {
+                    info!("Environment configuration folder found.");
+                } else {
+                    warn!("Environment configuration is neither file nor folder!");
+                }
+            } else {
+                warn!("Environment configuration file/folder does not exists!");
+            }
+
+            Ok(())
+        }
+        Commands::Encrypt {} => {
             let (key, key_source) = Key::load_key(&cli.key, cli.keyfile.as_path())?;
             log_key_source(key_source);
-            let ciphertext = fs::read_to_string(vault)?;
-            let pack = key.decrypt_base64(&ciphertext)?;
-            pack.unpack(dotenv)?;
 
-            println!("Decrypted content successfully written to {:?}", dotenv);
+            let pack = EnvironmentPack::from_path(&cli.env_conf)?;
+            let ciphertext = key.encrypt_base64(&pack)?;
+
+            // Write the ciphertext to output file
+            fs::write(&cli.vault, ciphertext)?;
+
+            info!("Encrypted content successfully written to {:?}", cli.vault);
+            Ok(())
+        }
+        Commands::Decrypt {} => {
+            let (key, key_source) = Key::load_key(&cli.key, cli.keyfile.as_path())?;
+            log_key_source(key_source);
+            let ciphertext = fs::read_to_string(cli.vault)?;
+            let pack = key.decrypt_base64(&ciphertext)?;
+            pack.unpack(&cli.env_conf)?;
+
+            info!(
+                "Decrypted content successfully written to {:?}",
+                cli.env_conf
+            );
             Ok(())
         }
     }
@@ -115,18 +169,41 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
 fn log_key_source(key_source: KeySource) {
     match key_source {
         KeySource::File(key_file) => {
-            println!("Key was loaded from {:?}", key_file)
+            info!("Key was loaded from {:?}", key_file)
         }
         KeySource::Env => {
-            println!("Key was loaded from CI_SECRET")
+            info!("Key was loaded from CI_SECRET")
         }
     }
 }
 
+fn init_logger(verbosity: u8) {
+    use env_logger::{Builder, Target};
+    use std::io::Write;
+
+    Builder::new()
+        .format(|buf, record| {
+            let msg = format!("{}", record.args());
+            match record.level() {
+                log::Level::Warn => writeln!(buf, "\x1b[33m[WARN] {}\x1b[0m", msg), // red
+                log::Level::Error => writeln!(buf, "\x1b[91m[ERROR] {}\x1b[0m", msg), // bright red
+                _ => writeln!(buf, "{}", msg),                                      // default
+            }
+        })
+        .target(Target::Stdout)
+        .filter_level(match verbosity {
+            0 => log::LevelFilter::Info,  // always show info & higher
+            1 => log::LevelFilter::Debug, // debug + info + warn + error
+            _ => log::LevelFilter::Trace, // trace + debug + info + warn + error
+        })
+        .init();
+}
+
 fn main() {
     let cli = Cli::parse();
+    init_logger(cli.verbose);
     if let Err(err) = run(cli) {
-        eprintln!("{}", err);
+        error!("{}", err);
         std::process::exit(1);
     }
 }

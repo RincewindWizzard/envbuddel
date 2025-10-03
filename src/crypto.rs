@@ -1,6 +1,5 @@
 use crate::crypto::KeySource::{Env, File};
 use crate::filepacker::EnvironmentPack;
-use aes_gcm::Aes256Gcm;
 use base64::Engine;
 use rand::RngCore;
 use std::fs;
@@ -67,6 +66,7 @@ impl Key {
     }
 
     /// Get key as raw bytes
+    #[allow(dead_code)]
     pub fn as_bytes(&self) -> &[u8] {
         &self.bytes
     }
@@ -131,7 +131,7 @@ impl Key {
 
         cipher
             .decrypt(nonce, ciphertext)
-            .map_err(|e| {
+            .map_err(|_| {
                 "Decryption failed. Possible causes: wrong key, wrong nonce, or corrupted data."
                     .to_string()
             })
