@@ -44,12 +44,7 @@ jobs:
           body: "Automated release from tag ${{ github.ref_name }}"
           draft: false
           prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload release binary
-        uses: softprops/action-gh-release@v2
-        with:
           files: target/release/envbuddel
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
