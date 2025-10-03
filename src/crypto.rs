@@ -5,6 +5,8 @@ use rand::RngCore;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+const BASE62: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+
 pub struct Key {
     bytes: [u8; 32],
 }
@@ -24,7 +26,7 @@ impl Key {
 
     pub fn load_key(key: &Option<String>, keyfile: &Path) -> Result<(Key, KeySource), String> {
         if let Some(key) = key {
-            Ok((Key::from_base64(&key)?, Env))
+            Ok((Key::from_printable(&key)?, Env))
         } else {
             // Try to read the keyfile
             match fs::read_to_string(keyfile) {
@@ -33,7 +35,7 @@ impl Key {
                     if trimmed.is_empty() {
                         Err(format!("Error: Keyfile {:?} is empty", keyfile))
                     } else {
-                        Ok((Key::from_base64(&trimmed)?, File(keyfile.to_path_buf())))
+                        Ok((Key::from_printable(&trimmed)?, File(keyfile.to_path_buf())))
                     }
                 }
                 Err(e) => Err(format!(
@@ -42,6 +44,10 @@ impl Key {
                 )),
             }
         }
+    }
+
+    pub fn save_key(&self, keyfile: &Path) -> Result<(), String> {
+        fs::write(keyfile, self.to_printable()).map_err(|e| e.to_string())
     }
 
     /// Load key from raw bytes (must be 32 bytes)
@@ -58,6 +64,7 @@ impl Key {
     }
 
     /// Load key from standard Base64
+    #[allow(dead_code)]
     pub fn from_base64(encoded: &str) -> Result<Self, String> {
         let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
             .decode(encoded)
@@ -72,8 +79,21 @@ impl Key {
     }
 
     /// Encode key as standard Base64
+    #[allow(dead_code)]
     pub fn to_base64(&self) -> String {
         base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(&self.bytes)
+    }
+
+    pub fn to_printable(&self) -> String {
+        use base_x::encode;
+        encode(BASE62, &self.bytes)
+    }
+
+    pub fn from_printable(encoded: &str) -> Result<Self, String> {
+        use base_x::decode;
+        let bytes =
+            decode(BASE62, encoded).map_err(|e| format!("Failed to decode Base62: {}", e))?;
+        Self::from_bytes(&bytes)
     }
 
     /// Encrypt a string and return ciphertext with prepended nonce

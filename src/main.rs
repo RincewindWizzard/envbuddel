@@ -64,10 +64,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             info!("  $ export CI_SECRET=\"{}\"", key.to_base64());
             info!("");
 
-            if let Err(err) = fs::write(&cli.keyfile, key.to_base64()) {
-                warn!("{}", err); // print error to stderr
-                std::process::exit(1); // exit with failure
-            }
+            key.save_key(&cli.keyfile)?;
             info!("Key written to {:?}", cli.keyfile);
 
             info!("Excluding secret files using \".gitignore\".");
