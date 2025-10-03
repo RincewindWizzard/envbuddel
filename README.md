@@ -27,10 +27,10 @@ envbuddel [OPTIONS] <COMMAND>
 ### Options
 
 * `-v, --verbose` : Increase verbosity. Can be repeated (`-v`, `-vv`, `-vvv`)
-* `--keyfile <PATH>` : Path to the keyfile (default: `safe.key`)
+* `--keyfile <PATH>` : Path to the keyfile (default: `vault.key`)
 * `--key <KEY>` : the secret key. This is equal to setting CI_SECRET environment variable
-* `--env-conf <PATH>` : Path to the secret environment configuration. Can be a file or a folder
-* `--vault <PATH>` : Path to the encrypted vault file.
+* `--env-conf <PATH>` : Path to the secret environment configuration. Can be a file or a folder (default: `.env`)
+* `--vault <PATH>` : Path to the encrypted vault file. (default: `vault.enc`)
 
 ### Commands
 
@@ -87,4 +87,14 @@ envbuddel encrypt
 ```
 
 If no key is provided, the program will use the default keyfile (`safe.key`).
+
+
+# Samples
+
+```bash
+envbuddel -vv --keyfile sample/init/safe.key --env-conf sample/init/.env/ --vault sample/init/vault.enc init --folder
+envbuddel -vv --keyfile sample/init/safe.key --env-conf sample/init/.env/ --vault sample/init/vault.enc info
+envbuddel -vv --keyfile sample/init/safe.key --env-conf sample/init/.env/ --vault sample/init/vault.enc encrypt
+envbuddel -vv --keyfile sample/init/safe.key --env-conf sample/init/.env/ --vault sample/init/vault.enc decrypt
+```
 

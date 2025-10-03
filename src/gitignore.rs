@@ -1,22 +1,41 @@
 use std::fs::{read_to_string, OpenOptions};
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use log::{debug, trace};
 
-const GITIGNORE_PATH: &str = ".gitignore";
-const SECRET_FILES: [&str; 3] = ["safe.key", ".env", ".idea"];
+/// Searches upward from the current directory until a .gitignore is found.
+/// Returns the PathBuf to the .gitignore file or an error if none is found.
+fn find_gitignore(start: &Path) -> Result<PathBuf, String> {
+    let mut current = start.to_path_buf();
 
-fn read_gitignore() -> String {
-    let gitignore_path = Path::new(GITIGNORE_PATH);
+    loop {
+        let candidate = current.join(".gitignore");
+        if candidate.exists() {
+            return Ok(candidate);
+        }
 
-    if gitignore_path.exists() {
-        read_to_string(gitignore_path).expect("Failed to read .gitignore")
-    } else {
-        String::new()
+        // If we are at the root, stop
+        match current.parent() {
+            Some(parent) => current = parent.to_path_buf(),
+            None => break,
+        }
     }
+
+    Err("No .gitignore found in current or parent directories".to_string())
 }
 
-fn write_gitignore(content: &str) {
-    let gitignore_path = Path::new(GITIGNORE_PATH);
+pub fn read_gitignore() -> Result<String, String> {
+    let gitignore_path = find_gitignore(Path::new("."))?;
+    trace!(".gitignore found: {}", gitignore_path.display());
+    if gitignore_path.exists() {
+        return Ok(read_to_string(gitignore_path).map_err(|_| "Failed to read .gitignore")?);
+    }
+    Err("Could not find .gitignore".to_string())
+}
+
+pub fn write_gitignore(content: &str) -> Result<(), String> {
+    let gitignore_path = find_gitignore(Path::new("."))?;
+    trace!(".gitignore found: {}", gitignore_path.display());
     let mut file = OpenOptions::new()
         .create(true)
         .write(true)
@@ -25,10 +44,12 @@ fn write_gitignore(content: &str) {
         .expect("Failed to open or create .gitignore");
 
     file.write_all(content.as_bytes())
-        .expect("Failed to write to .gitignore");
+        .map_err(|_| "Failed to write .gitignore")?;
+
+    Ok(())
 }
 
-fn add_files_to_gitignore(content: &str, files: &[&str]) -> String {
+pub fn add_files_to_gitignore(content: &str, files: &[&str]) -> String {
     let mut existing: Vec<String> = content
         .lines()
         .map(|line| line.trim().to_string())
@@ -41,10 +62,4 @@ fn add_files_to_gitignore(content: &str, files: &[&str]) -> String {
     }
 
     existing.join("\n") + "\n"
-}
-
-pub fn gitignore() {
-    let content = read_gitignore();
-    let content = add_files_to_gitignore(&content, &SECRET_FILES);
-    write_gitignore(&content);
 }

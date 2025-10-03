@@ -5,7 +5,7 @@ mod gitignore;
 use crate::crypto::{Key, KeySource};
 use crate::filepacker::EnvironmentPack;
 use clap::{Parser, Subcommand};
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -18,7 +18,7 @@ struct Cli {
     verbose: u8,
 
     /// Path to the keyfile
-    #[arg(long, default_value = "safe.key")]
+    #[arg(long, default_value = "vault.key")]
     keyfile: PathBuf,
 
     /// Content of the key
@@ -30,7 +30,7 @@ struct Cli {
     env_conf: PathBuf,
 
     /// path to the vault file
-    #[arg(long, default_value = "env.enc")]
+    #[arg(long, default_value = "vault.enc")]
     vault: PathBuf,
 
     #[command(subcommand)]
@@ -61,19 +61,37 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         Commands::Init { folder } => {
             let key = Key::generate();
             info!("Please run this to provide the key as environment variable:\n");
-            info!("  $ export CI_SECRET=\"{}\"", key.to_base64());
+            info!("  $ export CI_SECRET=\"{}\"", key.to_printable());
             info!("");
 
             key.save_key(&cli.keyfile)?;
             info!("Key written to {:?}", cli.keyfile);
 
             info!("Excluding secret files using \".gitignore\".");
-            gitignore::gitignore();
+            let content = gitignore::read_gitignore()?;
+            debug!("Finished reading .gitignore file");
+            let content = gitignore::add_files_to_gitignore(
+                &content,
+                &vec![
+                    ".idea",
+                    &cli.keyfile.display().to_string(),
+                    &cli.env_conf.display().to_string(),
+                ],
+            );
+
+            gitignore::write_gitignore(&content)?;
+            debug!("Finished writing .gitignore file");
 
             if *folder {
+                if cli.env_conf.exists() && cli.env_conf.is_file() {
+                    Err("Environment already exists but it is not a folder!")?;
+                }
                 fs::create_dir_all(&cli.env_conf)?;
                 info!("Created folder {:?}", cli.env_conf);
             } else {
+                if cli.env_conf.exists() && cli.env_conf.is_dir() {
+                    Err("Environment already exists but it is not a file!")?;
+                }
                 fs::write(&cli.env_conf, "")?;
             }
 
