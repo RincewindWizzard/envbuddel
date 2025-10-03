@@ -3,10 +3,10 @@ name: Release envbuddel
 on:
   push:
     tags:
-      - 'v*'  # löst nur bei Tag-Pushes wie v0.1.0 aus
+      - 'v*'  # nur bei Tag-Pushes wie v0.1.0 auslösen
 
 permissions:
-  contents: write  # für Releases benötigt
+  contents: write  # für GitHub Release nötig
 
 jobs:
   release:
@@ -33,7 +33,7 @@ jobs:
           path: target
           key: cargo-build-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Build release
+      - name: Build release binary
         run: cargo build --release
 
       - name: Create GitHub Release
@@ -47,7 +47,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload binary to release
+      - name: Upload release binary
         uses: softprops/action-gh-release@v2
         with:
           files: target/release/envbuddel
