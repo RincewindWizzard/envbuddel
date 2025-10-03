@@ -1,7 +1,5 @@
 use log::{debug, info, trace};
 use std::fs;
-use std::fs::{read_to_string, OpenOptions};
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
 pub fn find_repo() -> Result<PathBuf, String> {
@@ -74,10 +72,7 @@ pub fn gitignore(files: Vec<PathBuf>) -> Result<(), String> {
         let entries: Vec<&str> = entries.iter().map(|s| s.as_str()).collect();
 
         debug!("Finished reading .gitignore file");
-        let content = add_files_to_gitignore(
-            &content,
-            &entries,
-        );
+        let content = add_files_to_gitignore(&content, &entries);
         fs::write(gitignore, content).map_err(|e| format!("{:?}", e))?;
 
         debug!("Finished writing .gitignore file");

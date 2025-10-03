@@ -4,10 +4,9 @@ mod gitignore;
 
 use crate::crypto::{Key, KeySource};
 use crate::filepacker::EnvironmentPack;
-use crate::gitignore::{find_repo, gitignore};
+use crate::gitignore::gitignore;
 use clap::{Parser, Subcommand};
-use log::{debug, error, info, trace, warn};
-use std::fmt::format;
+use log::{error, info, warn};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -62,7 +61,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     match &cli.command {
         Commands::Init { folder } => {
             let key = match Key::load_key(&cli.key, cli.keyfile.as_path()) {
-                Ok((key, key_source)) => key,
+                Ok((key, _)) => key,
                 Err(_) => Key::generate(),
             };
 
