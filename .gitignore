@@ -1,4 +1,5 @@
 /target
 .env
-safe.key
+sample/safe.key
 .idea
+safe.key

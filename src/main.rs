@@ -1,9 +1,12 @@
 mod crypto;
+mod filepacker;
 mod gitignore;
 
-use crate::crypto::Key;
+use crate::crypto::{Key, KeySource};
+use crate::filepacker::{tar_directory, EnvironmentPack};
 use clap::{Parser, Subcommand};
 use std::fs;
+use std::path::{Path, PathBuf};
 
 #[derive(Parser)]
 #[command(name = "envcaja")]
@@ -11,7 +14,7 @@ use std::fs;
 struct Cli {
     /// Path to the keyfile
     #[arg(long, default_value = "safe.key")]
-    keyfile: String,
+    keyfile: PathBuf,
 
     #[arg(long, env = "CI_SECRET")]
     key: Option<String>,
@@ -22,41 +25,36 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Shows info
     Info {},
+
+    /// Initializes repository. Creates a new key and adds entries to .gitignore
     Init {},
+
+    /// Encrypt the environment and stores everything in one file
     Encrypt {
         /// path to .env file
         #[arg(long, default_value = ".env")]
-        dotenv: String,
+        dotenv: PathBuf,
 
         /// path to env.enc file
         #[arg(long, default_value = "env.enc")]
-        vault: String,
+        vault: PathBuf,
     },
 
+    /// Decrypts the environment
     Decrypt {
         /// path to .env file
         #[arg(long, default_value = ".env")]
-        dotenv: String,
+        dotenv: PathBuf,
 
         /// path to env.enc file
         #[arg(long, default_value = "env.enc")]
-        vault: String,
+        vault: PathBuf,
     },
 }
-fn safe_load_key(cli: &Cli) -> Key {
-    match Key::load_key(&cli.key, &cli.keyfile) {
-        Ok(k) => k,
-        Err(err) => {
-            eprintln!("Could not load key: {}", err);
-            std::process::exit(1);
-        }
-    }
-}
 
-fn main() {
-    let cli = Cli::parse();
-
+fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     match &cli.command {
         Commands::Init {} => {
             let key = Key::generate();
@@ -68,75 +66,67 @@ fn main() {
                 eprintln!("{}", err); // print error to stderr
                 std::process::exit(1); // exit with failure
             }
-            println!("Key written to \"{}\"", cli.keyfile);
+            println!("Key written to {:?}", cli.keyfile);
 
             println!("Excluding secret files using \".gitignore\".");
             gitignore::gitignore();
+            Ok(())
         }
-        Commands::Info {} => match Key::load_key(&cli.key, &cli.keyfile) {
-            Ok(key) => {
-                println!("Successfully loaded the key:");
-                println!("CI_SECRET=\"{}\"", key.to_base64());
+        Commands::Info {} => {
+            match Key::load_key(&cli.key, &cli.keyfile) {
+                Ok((key, key_source)) => {
+                    log_key_source(key_source);
+                    println!("Successfully loaded the key:");
+                    println!("CI_SECRET=\"{}\"", key.to_base64());
+                }
+                Err(err) => eprintln!("{}", err),
             }
-            Err(err) => eprintln!("{}", err),
-        },
+            Ok(())
+        }
         Commands::Encrypt { dotenv, vault } => {
-            let key = safe_load_key(&cli);
+            let (key, key_source) = Key::load_key(&cli.key, cli.keyfile.as_path())?;
+            log_key_source(key_source);
 
-            // Read the input file
-            let content = match fs::read_to_string(dotenv) {
-                Ok(c) => c,
-                Err(err) => {
-                    eprintln!("Failed to read file '{}': {}", dotenv, err);
-                    std::process::exit(1);
-                }
-            };
+            let dotenv = Path::new(dotenv);
+            let vault = Path::new(vault);
 
-            // Encrypt the content
-            let ciphertext = match key.encrypt_string_base64(&content) {
-                Ok(ct) => ct,
-                Err(err) => {
-                    eprintln!("Encryption failed: {}", err);
-                    std::process::exit(1);
-                }
-            };
+            let pack = EnvironmentPack::from_path(dotenv)?;
+            let ciphertext = key.encrypt_base64(&pack)?;
 
             // Write the ciphertext to output file
-            if let Err(err) = fs::write(vault, ciphertext) {
-                eprintln!("Failed to write file '{}': {}", vault, err);
-                std::process::exit(1);
-            }
+            fs::write(vault, ciphertext)?;
 
-            println!("Encrypted content successfully written to '{}'", vault);
+            println!("Encrypted content successfully written to {:?}", vault);
+            Ok(())
         }
         Commands::Decrypt { dotenv, vault } => {
-            let key = safe_load_key(&cli);
+            let (key, key_source) = Key::load_key(&cli.key, cli.keyfile.as_path())?;
+            log_key_source(key_source);
+            let ciphertext = fs::read_to_string(vault)?;
+            let pack = key.decrypt_base64(&ciphertext)?;
+            pack.unpack(dotenv)?;
 
-            // Read the encrypted file
-            let ciphertext = match fs::read_to_string(vault) {
-                Ok(c) => c,
-                Err(err) => {
-                    eprintln!("Failed to read encrypted file '{}': {}", vault, err);
-                    std::process::exit(1);
-                }
-            };
-
-            // Decrypt the content
-            let plaintext = match key.decrypt_string_base64(&ciphertext) {
-                Ok(pt) => pt,
-                Err(err) => {
-                    eprintln!("Decryption failed: {}", err);
-                    std::process::exit(1);
-                }
-            };
-
-            // Write the decrypted content to output file
-            if let Err(err) = fs::write(dotenv, plaintext) {
-                eprintln!("Failed to write output file '{}': {}", dotenv, err);
-                std::process::exit(1);
-            }
-
-            println!("Decrypted content successfully written to '{}'", dotenv);
+            println!("Decrypted content successfully written to {:?}", dotenv);
+            Ok(())
         }
+    }
+}
+
+fn log_key_source(key_source: KeySource) {
+    match key_source {
+        KeySource::File(key_file) => {
+            println!("Key was loaded from {:?}", key_file)
+        }
+        KeySource::Env => {
+            println!("Key was loaded from CI_SECRET")
+        }
+    }
+}
+
+fn main() {
+    let cli = Cli::parse();
+    if let Err(err) = run(cli) {
+        eprintln!("{}", err);
+        std::process::exit(1);
     }
 }

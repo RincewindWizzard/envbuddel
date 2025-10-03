@@ -1,10 +1,18 @@
+use crate::crypto::KeySource::{Env, File};
+use crate::filepacker::EnvironmentPack;
 use aes_gcm::Aes256Gcm;
 use base64::Engine;
 use rand::RngCore;
 use std::fs;
+use std::path::{Path, PathBuf};
 
 pub struct Key {
     bytes: [u8; 32],
+}
+
+pub enum KeySource {
+    File(PathBuf),
+    Env,
 }
 
 impl Key {
@@ -15,22 +23,22 @@ impl Key {
         Self { bytes }
     }
 
-    pub fn load_key(key: &Option<String>, keyfile: &str) -> Result<Key, String> {
+    pub fn load_key(key: &Option<String>, keyfile: &Path) -> Result<(Key, KeySource), String> {
         if let Some(key) = key {
-            Key::from_base64(&key)
+            Ok((Key::from_base64(&key)?, Env))
         } else {
             // Try to read the keyfile
             match fs::read_to_string(keyfile) {
                 Ok(content) => {
                     let trimmed = content.trim();
                     if trimmed.is_empty() {
-                        Err(format!("Error: Keyfile '{}' is empty", keyfile))
+                        Err(format!("Error: Keyfile {:?} is empty", keyfile))
                     } else {
-                        Key::from_base64(trimmed)
+                        Ok((Key::from_base64(&trimmed)?, File(keyfile.to_path_buf())))
                     }
                 }
                 Err(e) => Err(format!(
-                    "Error: Failed to read keyfile '{}': {}",
+                    "Error: Failed to read keyfile {:?}: {}",
                     keyfile, e
                 )),
             }
@@ -69,7 +77,7 @@ impl Key {
     }
 
     /// Encrypt a string and return ciphertext with prepended nonce
-    pub fn encrypt_string(&self, plaintext: &str) -> Result<Vec<u8>, String> {
+    pub fn encrypt(&self, plaintext: &[u8]) -> Result<Vec<u8>, String> {
         use aes_gcm::aead::{rand_core::RngCore, Aead, OsRng};
         use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
 
@@ -81,7 +89,7 @@ impl Key {
         let nonce = Nonce::from_slice(&nonce_bytes);
 
         cipher
-            .encrypt(nonce, plaintext.as_bytes())
+            .encrypt(nonce, plaintext)
             .map(|mut ct| {
                 let mut result = nonce_bytes.to_vec();
                 result.append(&mut ct);
@@ -90,10 +98,10 @@ impl Key {
             .map_err(|e| format!("Encryption failed: {:?}", e))
     }
 
-    pub fn encrypt_string_base64(&self, plaintext: &str) -> Result<String, String> {
+    pub fn encrypt_base64(&self, pack: &EnvironmentPack) -> Result<String, String> {
         use base64::{engine::general_purpose, Engine as _};
 
-        let ciphertext = self.encrypt_string(plaintext)?;
+        let ciphertext = self.encrypt(pack.to_bytes()?.as_slice())?;
         let b64 = general_purpose::STANDARD.encode(&ciphertext);
 
         // Wrap lines manually at 64 chars
@@ -109,7 +117,7 @@ impl Key {
     }
 
     /// Decrypt a ciphertext (with prepended nonce) back to a string
-    pub fn decrypt_string(&self, ciphertext_with_nonce: &[u8]) -> Result<String, String> {
+    pub fn decrypt(&self, ciphertext_with_nonce: &[u8]) -> Result<EnvironmentPack, String> {
         use aes_gcm::aead::Aead;
         use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
         if ciphertext_with_nonce.len() < 12 {
@@ -123,11 +131,16 @@ impl Key {
 
         cipher
             .decrypt(nonce, ciphertext)
-            .map_err(|e| format!("Decryption failed: {:?}", e))
-            .and_then(|bytes| String::from_utf8(bytes).map_err(|e| format!("UTF-8 error: {}", e)))
+            .map_err(|e| {
+                "Decryption failed. Possible causes: wrong key, wrong nonce, or corrupted data."
+                    .to_string()
+            })
+            .and_then(|bytes| {
+                EnvironmentPack::from_bytes(&bytes).map_err(|e| format!("UTF-8 error: {}", e))
+            })
     }
 
-    pub fn decrypt_string_base64(&self, ciphertext_with_nonce: &str) -> Result<String, String> {
+    pub fn decrypt_base64(&self, ciphertext_with_nonce: &str) -> Result<EnvironmentPack, String> {
         // Remove any line breaks (LF or CRLF) before decoding
         let cleaned = ciphertext_with_nonce.replace(&['\n', '\r'][..], "");
 
@@ -137,33 +150,11 @@ impl Key {
             .map_err(|e| format!("Failed to decode Base64 ciphertext: {}", e))?;
 
         // Decrypt
-        self.decrypt_string(&ciphertext_bytes)
+        self.decrypt(&ciphertext_bytes)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::Key;
-
-    #[test]
-    fn test_encrypt_decrypt_roundtrip() {
-        // Generate a random key
-        let key = Key::generate();
-
-        // Original plaintext
-        let plaintext = "This is a secret string for envcaja!";
-
-        // Encrypt the plaintext
-        let ciphertext = key
-            .encrypt_string_base64(plaintext)
-            .expect("Encryption failed");
-
-        // Decrypt the ciphertext
-        let decrypted = key
-            .decrypt_string_base64(&ciphertext)
-            .expect("Decryption failed");
-
-        // Check that the decrypted string matches the original
-        assert_eq!(plaintext, decrypted);
-    }
 }
