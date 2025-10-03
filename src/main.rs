@@ -10,7 +10,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 #[derive(Parser)]
-#[command(name = "envcaja")]
+#[command(name = "envbuddel")]
 #[command(about = "File-based secret manager for CI/CD pipelines", long_about = None)]
 struct Cli {
     /// Increase verbosity (-v, -vv, -vvv)
@@ -103,7 +103,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             }
 
             match Key::load_key(&None, &cli.keyfile) {
-                Ok((key, key_source)) => {
+                Ok((key, _)) => {
                     info!(
                         "Key contained in {:?}: \"{}\"",
                         &cli.keyfile,
@@ -117,7 +117,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             if cli.vault.exists() && cli.vault.is_file() {
                 info!("Vault files exist.");
                 let ciphertext = fs::read_to_string(cli.vault)?;
-                let pack = key.decrypt_base64(&ciphertext)?;
+                let _ = key.decrypt_base64(&ciphertext)?;
                 info!("Successfully decrypted vault file.");
             } else {
                 warn!("No vault file detected!");

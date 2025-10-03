@@ -243,10 +243,9 @@ dependencies = [
 ]
 
 [[package]]
-name = "envcaja"
+name = "envbuddel"
 version = "0.1.0"
 dependencies = [
- "aes",
  "aes-gcm",
  "base64",
  "bincode",

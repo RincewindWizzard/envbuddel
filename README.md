@@ -1,6 +1,6 @@
-# envcaja
+# envbuddel
 
-**envcaja** is a file-based secret manager designed for CI/CD pipelines.
+**envbuddel** is a file-based secret manager designed for CI/CD pipelines.
 It can encrypt a single .env file or a whole path of files.
 You can supply the key as environment variable or as a key file.
 
@@ -14,14 +14,14 @@ Build from source with Cargo:
 cargo build --release
 ```
 
-The binary will be available in `target/release/envcaja`.
+The binary will be available in `target/release/envbuddel`.
 
 ---
 
 ## Usage
 
 ```bash
-envcaja [OPTIONS] <COMMAND>
+envbuddel [OPTIONS] <COMMAND>
 ```
 
 ### Options
@@ -39,7 +39,7 @@ envcaja [OPTIONS] <COMMAND>
 Initializes the repository:
 
 ```bash
-envcaja init
+envbuddel init
 ```
 
 ### Options
@@ -56,7 +56,7 @@ Analyzes the repository and checks for configuration errors.
 Displays all important informations.
 
 ```bash
-envcaja info
+envbuddel info
 ```
 
 #### `encrypt`
@@ -64,7 +64,7 @@ envcaja info
 Encrypts a `.env` file or directory:
 
 ```bash
-envcaja encrypt 
+envbuddel encrypt 
 ```
 
 #### `decrypt`
@@ -72,7 +72,7 @@ envcaja encrypt
 Decrypts an encrypted vault back to a file or folder:
 
 ```bash
-envcaja decrypt
+envbuddel decrypt
 ```
 
 ---
@@ -83,7 +83,7 @@ You can provide the key via the `CI_SECRET` environment variable:
 
 ```bash
 export CI_SECRET="your_base64_key_here"
-envcaja encrypt 
+envbuddel encrypt 
 ```
 
 If no key is provided, the program will use the default keyfile (`safe.key`).
