@@ -1,0 +1,4 @@
+/target
+.env
+safe.key
+.idea
