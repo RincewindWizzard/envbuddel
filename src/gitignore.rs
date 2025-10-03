@@ -1,6 +1,6 @@
 use log::{debug, info, trace};
-use std::fs;
 use std::path::{Path, PathBuf};
+use std::{env, fs};
 
 pub fn find_repo() -> Result<PathBuf, String> {
     let mut current = Path::new(".").to_path_buf();
@@ -47,26 +47,43 @@ pub fn gitignore(files: Vec<PathBuf>) -> Result<(), String> {
 
         let mut entries: Vec<String> = files
             .iter()
-            .map(|file| {
-                let canonical = file.canonicalize().map_err(|err| {
-                    format!("Could not canonicalize file path {:?}: {}", file, err)
-                })?;
+            .filter_map(|file| {
+                // Absoluten Pfad berechnen, auch wenn die Datei noch nicht existiert
+                let canonical = if file.is_absolute() {
+                    file.to_path_buf()
+                } else {
+                    match env::current_dir() {
+                        Ok(cwd) => cwd.join(file),
+                        Err(err) => {
+                            eprintln!("Warning: Could not get current directory: {}", err);
+                            return None;
+                        }
+                    }
+                };
 
-                let relative = canonical.strip_prefix(repository.clone()).map_err(|err| {
-                    format!(
-                        "Could not strip prefix {:?} from {:?}: {}",
-                        repository, canonical, err
-                    )
-                })?;
+                // Relativen Pfad zum Repository bestimmen
+                let relative = match canonical.strip_prefix(&repository) {
+                    Ok(r) => r,
+                    Err(err) => {
+                        eprintln!(
+                            "Warning: Could not strip prefix {:?} from {:?}: {}",
+                            repository, canonical, err
+                        );
+                        return None;
+                    }
+                };
 
-                relative
-                    .to_str()
-                    .map(|s| s.to_string())
-                    .ok_or_else(|| format!("Path {:?} is not valid UTF-8", relative))
+                // In UTF-8 String umwandeln
+                match relative.to_str() {
+                    Some(s) => Some(s.to_string()),
+                    None => {
+                        eprintln!("Warning: Path {:?} is not valid UTF-8", relative);
+                        None
+                    }
+                }
             })
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect();
 
-        // Optional: immer ".idea" hinzufügen
         entries.push(".idea".to_string());
 
         let entries: Vec<&str> = entries.iter().map(|s| s.as_str()).collect();
