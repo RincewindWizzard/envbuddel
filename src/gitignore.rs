@@ -1,7 +1,7 @@
+use log::trace;
 use std::fs::{read_to_string, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use log::{debug, trace};
 
 /// Searches upward from the current directory until a .gitignore is found.
 /// Returns the PathBuf to the .gitignore file or an error if none is found.
