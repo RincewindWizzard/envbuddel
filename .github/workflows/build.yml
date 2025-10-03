@@ -6,7 +6,7 @@ on:
       - main
 
 permissions:
-  contents: write
+  contents: read  # kein Release hier, nur Build
 
 jobs:
   build:
@@ -36,27 +36,8 @@ jobs:
       - name: Build release
         run: cargo build --release
 
-      - name: Read version from Cargo.toml
-        id: cargo_version
-        run: |
-          VERSION=$(cargo metadata --format-version 1 --no-deps \
-            | jq -r '.packages[0].version')
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: "v${{ steps.cargo_version.outputs.version }}"
-          name: "envbuddel v${{ steps.cargo_version.outputs.version }}"
-          body: "Automated release from main branch."
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload binary to release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: target/release/envbuddel
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: envbuddel
+          path: target/release/envbuddel
