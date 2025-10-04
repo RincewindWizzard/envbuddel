@@ -12,17 +12,38 @@ jobs:
       contents: write  # nötig für Tags und Releases
 
     steps:
+      # -------------------------------
+      # Checkout
+      # -------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # alle Commits + Tags verfügbar
+          fetch-depth: 0  # nötig für Tags
 
-      - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y jq
+      # -------------------------------
+      # Cache für Rust
+      # -------------------------------
+      - name: Cache Cargo registry & build
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
 
+
+      # -------------------------------
+      # Install Rust
+      # -------------------------------
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      # -------------------------------
+      # Get current version
+      # -------------------------------
       - name: Get current version
         id: version
         run: |
@@ -30,11 +51,15 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Detected crate version: $VERSION"
 
-      - name: Build and test
-        run: |
-          cargo build --release
-          cargo test --verbose
+      # -------------------------------
+      # Build & Test
+      # -------------------------------
+      - name: Build & Test
+        run: cargo test --release --verbose
 
+      # -------------------------------
+      # Publish to crates.io
+      # -------------------------------
       - name: Publish to crates.io
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
@@ -42,7 +67,9 @@ jobs:
           echo "Publishing envbuddel v${{ steps.version.outputs.version }} to crates.io..."
           cargo publish --token $CARGO_REGISTRY_TOKEN
 
-      # ⛔ Verhindert Fehler, falls Tag schon existiert
+      # -------------------------------
+      # Create Git Tag
+      # -------------------------------
       - name: Create Git Tag
         run: |
           TAG=v${{ steps.version.outputs.version }}
@@ -53,6 +80,9 @@ jobs:
             git push origin $TAG
           fi
 
+      # -------------------------------
+      # Create GitHub Release
+      # -------------------------------
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -65,9 +95,15 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # -------------------------------
+      # Bump patch version
+      # -------------------------------
       - name: Bump patch version
         run: |
-          cargo install cargo-edit --force
+          export CARGO_BIN_DIR="$HOME/.cargo/bin"
+          if ! command -v cargo-set-version >/dev/null; then
+            cargo install cargo-edit --root $HOME/.cargo
+          fi
           cargo set-version --bump patch
           NEW_VERSION=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
           echo "Bumped to next patch version: $NEW_VERSION"
