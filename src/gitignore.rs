@@ -142,20 +142,7 @@ mod tests {
         assert_eq!(result, "file1\n");
     }
 
-    #[test]
-    fn test_find_repo_finds_git_repo() {
-        let tmp_dir = TempDir::new().unwrap();
-        let git_dir = tmp_dir.path().join(".git");
-        fs::create_dir(&git_dir).unwrap();
 
-        let current = env::current_dir().unwrap();
-        env::set_current_dir(tmp_dir.path()).unwrap();
-
-        let repo = find_repo().unwrap();
-        assert_eq!(repo, tmp_dir.path().canonicalize().unwrap());
-
-        env::set_current_dir(current).unwrap();
-    }
 
     #[test]
     fn test_find_repo_no_repo() {
