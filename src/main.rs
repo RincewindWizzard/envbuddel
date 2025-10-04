@@ -11,8 +11,13 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 #[derive(Parser)]
-#[command(name = "envbuddel")]
-#[command(about = "File-based secret manager for CI/CD pipelines", long_about = None)]
+#[command(
+    name = "envbuddel",
+    about = "File-based secret manager for CI/CD pipelines",
+    long_about = None,
+    version,
+    author,
+)]
 struct Cli {
     /// Increase verbosity (-v, -vv, -vvv)
     #[arg(short, long, action = clap::ArgAction::Count)]
