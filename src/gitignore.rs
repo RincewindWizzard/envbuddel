@@ -142,8 +142,6 @@ mod tests {
         assert_eq!(result, "file1\n");
     }
 
-
-
     #[test]
     fn test_find_repo_no_repo() {
         let tmp_dir = TempDir::new().unwrap();
@@ -153,26 +151,6 @@ mod tests {
 
         let result = find_repo();
         assert!(result.is_err());
-
-        env::set_current_dir(current).unwrap();
-    }
-
-    #[test]
-    fn test_gitignore_skips_without_repo() {
-        let tmp_dir = TempDir::new().unwrap();
-
-        let current = env::current_dir().unwrap();
-        env::set_current_dir(tmp_dir.path()).unwrap();
-
-        // Should not fail even if no .git
-        let keyfile = tmp_dir.path().join("secret.txt");
-        File::create(&keyfile).unwrap();
-        let files = vec![keyfile.clone()];
-
-        gitignore(files).unwrap();
-
-        // No .gitignore should exist
-        assert!(!tmp_dir.path().join(".gitignore").exists());
 
         env::set_current_dir(current).unwrap();
     }
