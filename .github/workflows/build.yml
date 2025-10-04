@@ -33,8 +33,10 @@ jobs:
           path: target
           key: cargo-build-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Build release
-        run: cargo build --release
+      - name: Build and test
+        run: |
+          cargo build --release
+          cargo test --verbose
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4

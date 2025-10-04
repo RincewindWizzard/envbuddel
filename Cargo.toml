@@ -1,7 +1,17 @@
 [package]
 name = "envbuddel"
-version = "0.1.7"
+version = "0.1.9"
 edition = "2021"
+
+authors = ["RincewindWizzard <git@magierdinge.de>"]
+description = "envbuddel is a file-based secret manager designed for CI/CD pipelines."
+license = "LGPL-2.1"
+repository = "https://github.com/RincewindWizzard/envbuddel"
+homepage = "https://github.com/RincewindWizzard/envbuddel"
+documentation = "https://github.com/RincewindWizzard/envbuddel"
+readme = "README.md"
+keywords = ["cli", "encryption", "environment", "tool"]
+categories = ["command-line-utilities"]
 
 [dependencies]
 aes-gcm = "0.10.3"
