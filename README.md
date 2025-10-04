@@ -19,7 +19,7 @@ The binary will be available in your path.
 Alternatively you can download the binary from our latest [release](https://github.com/RincewindWizzard/envbuddel/releases):
 
 ```bash
-wget https://github.com/RincewindWizzard/envbuddel/releases/download/v0.1.7/envbuddel
+wget https://github.com/RincewindWizzard/envbuddel/releases/download/v0.1.8/envbuddel
 chmod +x envbuddel
 ./envbuddel
 ```
