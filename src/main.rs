@@ -65,12 +65,13 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 Err(_) => Key::generate(),
             };
 
+            info!("Generated new key 🔑");
             info!("Please run this to provide the key as environment variable:\n");
             info!("  $ export CI_SECRET=\"{}\"", key.to_printable());
             info!("");
 
             key.save_key(&cli.keyfile)?;
-            info!("Key written to {:?}", cli.keyfile);
+            info!("💾 Key saved to {:?}", cli.keyfile);
 
             // add the secret files to the gitignore file
             gitignore(vec![cli.keyfile.clone(), cli.env_conf.clone()])?;
@@ -80,17 +81,18 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                     Err("Environment already exists but it is not a folder!")?;
                 } else if !cli.env_conf.exists() {
                     fs::create_dir_all(&cli.env_conf)?;
-                    info!("Created folder {:?}", cli.env_conf);
+                    info!("📂 Created environment folder at {:?}", cli.env_conf);
                 } else {
-                    info!("Environment already exists.");
+                    info!("📂 Environment already exists.");
                 }
             } else {
                 if cli.env_conf.exists() && cli.env_conf.is_dir() {
                     Err("Environment already exists but it is not a file!")?;
                 } else if !cli.env_conf.exists() {
                     fs::write(&cli.env_conf, "")?;
+                    info!("📄 Created environment file at {:?}", cli.env_conf);
                 } else {
-                    info!("Environment already exists.");
+                    info!("📄 Environment already exists.");
                 }
             }
 
@@ -100,7 +102,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             // Write the ciphertext to output file
             fs::write(&cli.vault, ciphertext)?;
 
-            info!("Encrypted content successfully written to {:?}", cli.vault);
+            info!("🔒 Vault successfully encrypted at {:?}", cli.vault);
 
             Ok(())
         }

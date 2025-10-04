@@ -1,4 +1,4 @@
-use log::{debug, info, trace};
+use log::{debug, info, trace, warn};
 use std::path::{Path, PathBuf};
 use std::{env, fs};
 
@@ -27,8 +27,6 @@ pub fn find_repo() -> Result<PathBuf, String> {
 }
 
 pub fn gitignore(files: Vec<PathBuf>) -> Result<(), String> {
-    info!("Excluding secret files using \".gitignore\".");
-
     if let Ok(repository) = find_repo() {
         let gitignore = repository.join(".gitignore");
 
@@ -96,8 +94,9 @@ pub fn gitignore(files: Vec<PathBuf>) -> Result<(), String> {
         fs::write(gitignore, content).map_err(|e| format!("{:?}", e))?;
 
         debug!("Finished writing .gitignore file");
+        info!("🛡️ Added key and environment to .gitignore");
     } else {
-        info!("Could not find a git repository. Skipping creation of .gitignore.");
+        warn!("Could not find a git repository. Skipping creation of .gitignore.");
     }
 
     Ok(())
@@ -116,4 +115,78 @@ pub fn add_files_to_gitignore(content: &str, files: &[&str]) -> String {
     }
 
     existing.join("\n") + "\n"
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs::{self, File};
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_add_files_to_gitignore_adds_new_entries() {
+        let content = "existing_file\n";
+        let files = ["new_file", "existing_file"];
+        let result = add_files_to_gitignore(content, &files);
+        let lines: Vec<&str> = result.lines().collect();
+        assert!(lines.contains(&"existing_file"));
+        assert!(lines.contains(&"new_file"));
+        assert_eq!(lines.len(), 2); // keine Duplikate
+    }
+
+    #[test]
+    fn test_add_files_to_gitignore_empty_content() {
+        let content = "";
+        let files = ["file1"];
+        let result = add_files_to_gitignore(content, &files);
+        assert_eq!(result, "file1\n");
+    }
+
+    #[test]
+    fn test_find_repo_finds_git_repo() {
+        let tmp_dir = TempDir::new().unwrap();
+        let git_dir = tmp_dir.path().join(".git");
+        fs::create_dir(&git_dir).unwrap();
+
+        let current = env::current_dir().unwrap();
+        env::set_current_dir(tmp_dir.path()).unwrap();
+
+        let repo = find_repo().unwrap();
+        assert_eq!(repo, tmp_dir.path().canonicalize().unwrap());
+
+        env::set_current_dir(current).unwrap();
+    }
+
+    #[test]
+    fn test_find_repo_no_repo() {
+        let tmp_dir = TempDir::new().unwrap();
+
+        let current = env::current_dir().unwrap();
+        env::set_current_dir(tmp_dir.path()).unwrap();
+
+        let result = find_repo();
+        assert!(result.is_err());
+
+        env::set_current_dir(current).unwrap();
+    }
+
+    #[test]
+    fn test_gitignore_skips_without_repo() {
+        let tmp_dir = TempDir::new().unwrap();
+
+        let current = env::current_dir().unwrap();
+        env::set_current_dir(tmp_dir.path()).unwrap();
+
+        // Should not fail even if no .git
+        let keyfile = tmp_dir.path().join("secret.txt");
+        File::create(&keyfile).unwrap();
+        let files = vec![keyfile.clone()];
+
+        gitignore(files).unwrap();
+
+        // No .gitignore should exist
+        assert!(!tmp_dir.path().join(".gitignore").exists());
+
+        env::set_current_dir(current).unwrap();
+    }
 }

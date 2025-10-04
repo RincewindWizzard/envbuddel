@@ -11,7 +11,7 @@ You can supply the key as environment variable or as a key file.
 Build from source with Cargo:
 
 ```bash
-cargo install --path .
+cargo install envbuddel
 ```
 
 The binary will be available in your path.
@@ -19,7 +19,7 @@ The binary will be available in your path.
 Alternatively you can download the binary from our latest [release](https://github.com/RincewindWizzard/envbuddel/releases):
 
 ```bash
-wget https://github.com/RincewindWizzard/envbuddel/releases/download/v0.1.8/envbuddel
+wget https://github.com/RincewindWizzard/envbuddel/releases/download/<version>/envbuddel
 chmod +x envbuddel
 ./envbuddel
 ```

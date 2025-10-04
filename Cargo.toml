@@ -24,3 +24,4 @@ bincode = { version = "2.0.1", features = ["serde"] }
 log = "0.4.28"
 env_logger = "0.11.8"
 base-x = "0.2.11"
+tempfile = "3.23.0"

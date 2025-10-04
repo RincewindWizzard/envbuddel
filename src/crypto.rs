@@ -11,6 +11,7 @@ pub struct Key {
     bytes: [u8; 32],
 }
 
+#[derive(Eq, PartialEq, Debug, Clone)]
 pub enum KeySource {
     File(PathBuf),
     Env,
@@ -136,7 +137,7 @@ impl Key {
         Ok(wrapped)
     }
 
-    /// Decrypt a ciphertext (with prepended nonce) back to a string
+    /// Decrypt a ciphertext (with prepended nonce) back to a EnvironmentPack
     pub fn decrypt(&self, ciphertext_with_nonce: &[u8]) -> Result<EnvironmentPack, String> {
         use aes_gcm::aead::Aead;
         use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
@@ -176,5 +177,108 @@ impl Key {
 
 #[cfg(test)]
 mod tests {
-    use super::Key;
+    use super::*;
+    use crate::filepacker::EnvironmentPack;
+    use std::fs::File;
+    use std::io::Write;
+    use tempfile::tempdir;
+
+    // Test that key generation produces 32 bytes
+    #[test]
+    fn test_generate_key_length() {
+        let key = Key::generate();
+        assert_eq!(key.bytes.len(), 32);
+    }
+
+    // Test from_bytes and as_bytes roundtrip
+    #[test]
+    fn test_from_bytes_roundtrip() {
+        let original_bytes = [42u8; 32];
+        let key = Key::from_bytes(&original_bytes).unwrap();
+        assert_eq!(key.as_bytes(), &original_bytes);
+    }
+
+    // Test invalid from_bytes length
+    #[test]
+    fn test_from_bytes_invalid_length() {
+        let result = Key::from_bytes(&[1, 2, 3]);
+        assert!(result.is_err());
+    }
+
+    // Test Base64 encode/decode
+    #[test]
+    fn test_base64_roundtrip() {
+        let key = Key::generate();
+        let b64 = key.to_base64();
+        let decoded = Key::from_base64(&b64).unwrap();
+        assert_eq!(decoded.as_bytes(), key.as_bytes());
+    }
+
+    // Test Base62 encode/decode (to_printable/from_printable)
+    #[test]
+    fn test_printable_roundtrip() {
+        let key = Key::generate();
+        let printable = key.to_printable();
+        let decoded = Key::from_printable(&printable).unwrap();
+        assert_eq!(decoded.as_bytes(), key.as_bytes());
+    }
+
+    // Test load_key from environment (Some)
+    #[test]
+    fn test_load_key_env() {
+        let key = Key::generate();
+        let key_str = key.to_printable();
+        let (loaded, source) =
+            Key::load_key(&Some(key_str.clone()), Path::new("/tmp/does_not_exist")).unwrap();
+        assert_eq!(source, KeySource::Env);
+        assert_eq!(loaded.to_printable(), key_str);
+    }
+
+    // Test load_key from file
+    #[test]
+    fn test_load_key_file() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("key.txt");
+
+        let key = Key::generate();
+        let key_str = key.to_printable();
+        let mut file = File::create(&file_path).unwrap();
+        writeln!(file, "{}", key_str).unwrap();
+
+        let (loaded, source) = Key::load_key(&None, &file_path).unwrap();
+        assert_eq!(source, KeySource::File(file_path.clone()));
+        assert_eq!(loaded.to_printable(), key_str);
+    }
+
+    // Test save_key
+    #[test]
+    fn test_save_key() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("key.txt");
+
+        let key = Key::generate();
+        key.save_key(&file_path).unwrap();
+        let content = std::fs::read_to_string(&file_path).unwrap();
+        assert_eq!(content.trim(), key.to_printable());
+    }
+
+    // Test encrypt/decrypt roundtrip
+    #[test]
+    fn test_encrypt_decrypt_roundtrip() {
+        let data: Vec<u8> = vec![0, 1, 2, 42];
+        let key = Key::generate();
+        let pack = EnvironmentPack::File(data.clone());
+
+        let ciphertext = key.encrypt(&pack.to_bytes().unwrap()).unwrap();
+        let decrypted = key.decrypt(&ciphertext).unwrap();
+        assert_eq!(decrypted.content().unwrap(), data);
+    }
+
+    // Test decrypt_base64 fails on corrupted data
+    #[test]
+    fn test_decrypt_base64_corrupted() {
+        let key = Key::generate();
+        let result = key.decrypt_base64("thisisnotbase64");
+        assert!(result.is_err());
+    }
 }

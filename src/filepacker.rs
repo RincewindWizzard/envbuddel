@@ -29,6 +29,14 @@ impl EnvironmentPack {
         }
     }
 
+    #[allow(dead_code)]
+    pub fn content(&self) -> Result<Vec<u8>, String> {
+        match self {
+            EnvironmentPack::File(data) => Ok(data.clone()),
+            EnvironmentPack::Folder(tar_bytes) => Ok(tar_bytes.clone()),
+        }
+    }
+
     /// Unpack the EnvironmentPack into the given destination path
     pub fn unpack(&self, dst_path: &Path) -> Result<(), String> {
         match self {
