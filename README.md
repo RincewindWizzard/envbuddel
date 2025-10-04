@@ -11,10 +11,18 @@ You can supply the key as environment variable or as a key file.
 Build from source with Cargo:
 
 ```bash
-cargo build --release
+cargo install --path .
 ```
 
-The binary will be available in `target/release/envbuddel`.
+The binary will be available in your path.
+
+Alternatively you can download the binary from our latest [release](https://github.com/RincewindWizzard/envbuddel/releases):
+
+```bash
+wget https://github.com/RincewindWizzard/envbuddel/releases/download/v0.1.7/envbuddel
+chmod +x envbuddel
+./envbuddel
+```
 
 ---
 
