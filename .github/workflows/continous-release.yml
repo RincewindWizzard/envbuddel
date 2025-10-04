@@ -1,0 +1,78 @@
+name: Auto Publish Crate
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # nötig für Tags und Releases
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # alle Commits + Tags verfügbar
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Get current version
+        id: version
+        run: |
+          VERSION=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Detected crate version: $VERSION"
+
+      - name: Build and test
+        run: |
+          cargo build --release
+          cargo test --verbose
+
+      - name: Publish to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          echo "Publishing envbuddel v${{ steps.version.outputs.version }} to crates.io..."
+          cargo publish --token $CARGO_REGISTRY_TOKEN
+
+      # ⛔ Verhindert Fehler, falls Tag schon existiert
+      - name: Create Git Tag
+        run: |
+          TAG=v${{ steps.version.outputs.version }}
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists. Skipping."
+          else
+            git tag $TAG
+            git push origin $TAG
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: "envbuddel v${{ steps.version.outputs.version }}"
+          body: "Automated release of envbuddel v${{ steps.version.outputs.version }}"
+          draft: false
+          prerelease: false
+          files: target/release/envbuddel
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Bump patch version
+        run: |
+          cargo install cargo-edit --force
+          cargo set-version --bump patch
+          NEW_VERSION=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
+          echo "Bumped to next patch version: $NEW_VERSION"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Cargo.toml Cargo.lock
+          git commit -m "Bump version to $NEW_VERSION"
+          git push origin main
