@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 #[derive(Parser)]
 #[command(name = "envbuddel")]
 #[command(about = "File-based secret manager for CI/CD pipelines", long_about = None)]
+#[command(version = env!("CARGO_PKG_VERSION"))]
 struct Cli {
     /// Increase verbosity (-v, -vv, -vvv)
     #[arg(short, long, action = clap::ArgAction::Count)]
