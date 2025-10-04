@@ -55,7 +55,9 @@ jobs:
       # Build & Test
       # -------------------------------
       - name: Build & Test
-        run: cargo test --release --verbose
+        run: |
+          cargo build --release
+          cargo test --release --verbose
 
       # -------------------------------
       # Publish to crates.io
